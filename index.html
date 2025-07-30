@@ -9,24 +9,28 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
-    <!-- Chosen Palette: Calm Harmony -->
-    <!-- Application Structure Plan: The SPA is designed as a narrative journey through econometric analysis. A sticky sidebar navigation allows users to move between distinct analytical steps (from simple OLS to 2SLS). The main content area features a large, dynamic chart and a corresponding text panel. Clicking a navigation item updates both the chart visualization (e.g., changing regression lines) and the explanatory text, guiding the user through the process of model refinement. This thematic, step-by-step structure was chosen to make a complex analysis digestible and engaging, prioritizing the user's understanding of the analytical story over a simple data dump. -->
-    <!-- Visualization & Content Choices: The core visualization is a Chart.js scatter plot of GDP vs. Consumption, upon which different regression lines are dynamically overlaid. This choice directly supports the goal of comparing different models. Key quantitative results (like the Marginal Propensity to Consume) are presented in highlighted text blocks that update with each step, allowing for easy synthesis of findings. The narrative text is adapted from the source blog post to explain the 'why' behind each analytical step (e.g., why dummy variables or instrumental variables are necessary). This combination of interactive charts and dynamic text serves the primary goal of making the econometric modeling process intuitive and explorable. No SVG or Mermaid JS is used, adhering to the constraints. -->
-    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
     <style>
         body {
             font-family: 'Inter', 'Noto Sans JP', sans-serif;
             background-color: #f8f9fa; /* Warm Neutral Background */
         }
+        /* ▼▼▼【改善点2】グラフコンテナの高さを画面幅に応じて変更 ▼▼▼ */
         .chart-container {
             position: relative;
             width: 100%;
             max-width: 900px;
             margin-left: auto;
             margin-right: auto;
-            height: 50vh;
-            max-height: 500px;
+            height: 300px; /* スマートフォン向けの高さ */
+            max-height: 50vh; /* 全体での最大高さ */
         }
+        @media (min-width: 768px) { /* mdサイズ以上 */
+            .chart-container {
+                height: 50vh; /* PC向けの高さ */
+                max-height: 500px;
+            }
+        }
+        /* ▲▲▲ 改善点2ここまで ▲▲▲ */
         .nav-link {
             transition: all 0.2s ease-in-out;
         }
@@ -94,33 +98,35 @@
                         <canvas id="consumptionChart"></canvas>
                     </div>
                     <div id="stats-panel" class="mt-6 grid grid-cols-1 gap-4 text-center">
-                        <!-- Stats will be dynamically inserted here -->
-                    </div>
+                        </div>
                     <article id="explanation-panel" class="mt-6 prose-custom max-w-none">
-                        <!-- Explanations will be dynamically inserted here -->
-                    </article>
+                        </article>
                 </section>
             </main>
         </div>
     </div>
 
     <script>
+        // ▼▼▼【改善点1】データを兆円単位に変換する準備 ▼▼▼
+        const toTrillion = (value) => value / 1000;
+        
         const data = {
             years: [1994, 1994.25, 1994.5, 1994.75, 1995, 1995.25, 1995.5, 1995.75, 1996, 1996.25, 1996.5, 1996.75, 1997, 1997.25, 1997.5, 1997.75, 1998, 1998.25, 1998.5, 1998.75, 1999, 1999.25, 1999.5, 1999.75, 2000, 2000.25, 2000.5, 2000.75, 2001, 2001.25, 2001.5, 2001.75, 2002, 2002.25, 2002.5, 2002.75, 2003, 2003.25, 2003.5, 2003.75, 2004, 2004.25, 2004.5, 2004.75, 2005, 2005.25, 2005.5, 2005.75, 2006, 2006.25, 2006.5, 2006.75, 2007, 2007.25, 2007.5, 2007.75, 2008, 2008.25, 2008.5, 2008.75, 2009, 2009.25, 2009.5, 2009.75, 2010, 2010.25, 2010.5, 2010.75, 2011, 2011.25, 2011.5, 2011.75, 2012, 2012.25, 2012.5, 2012.75, 2013, 2013.25, 2013.5, 2013.75, 2014, 2014.25, 2014.5, 2014.75, 2015, 2015.25, 2015.5, 2015.75, 2016, 2016.25, 2016.5, 2016.75, 2017, 2017.25, 2017.5, 2017.75, 2018, 2018.25, 2018.5, 2018.75, 2019, 2019.25, 2019.5, 2019.75, 2020, 2020.25, 2020.5, 2020.75, 2021, 2021.25, 2021.5, 2021.75, 2022, 2022.25, 2022.5, 2022.75, 2023, 2023.25, 2023.5, 2023.75, 2024, 2024.25, 2024.5, 2024.75, 2025],
-            gdp: [446231.9, 443811.6, 448902.7, 447184.6, 452028.7, 455738.4, 461173.1, 462912.8, 469141.2, 467957.5, 471012.5, 471097.9, 477810.1, 477114.7, 474483.3, 470104.7, 463999.4, 462002.1, 462552.1, 463795.3, 466858.1, 469792.8, 472535.1, 473133.4, 479935.2, 481001.2, 484310.2, 484196.4, 482121.2, 480036.7, 476839.2, 475267.4, 475858.7, 478546.7, 481079.1, 482613.5, 484831.3, 488035.7, 492029.3, 495919.1, 499981.2, 502283.4, 503223.1, 505293.4, 507428.2, 509927, 513075.8, 515328.1, 518680.1, 521949, 523315.6, 524956.1, 525895.8, 526209.6, 524817.3, 523789.2, 521882.3, 517868.5, 504625.9, 487291.1, 484307.7, 488730.7, 494511.4, 497677.2, 501306.9, 506306.2, 510486.2, 507649.3, 507340.5, 508215.1, 510010.5, 514332.3, 516947.5, 519967, 523347.1, 529124.9, 534421.1, 537463.3, 534293.3, 527581.4, 529094.1, 530460.9, 531393.3, 532845.6, 533994.4, 535263.2, 536336.8, 538202.9, 540301.6, 542273.7, 544062.8, 546294.6, 547285, 548325.2, 549301.1, 549925.1, 550608.8, 548970.6, 546877.8, 532986.9, 542151.2, 546255.4, 549219.7, 550796.8, 550269.4, 551061.3, 552179.2, 557454.4, 558654.7, 561765.8, 561541.8],
-            consumption: [243563.3, 244908.8, 246639.6, 246759.9, 248777.3, 250392.2, 252916.6, 253816.6, 256209.4, 256247, 257777.9, 257211.2, 261732.1, 259695.5, 258169.5, 254882.1, 252936.5, 253018.9, 253770.8, 254714.7, 256037.1, 257288.5, 259074.8, 259017.3, 262330.1, 263155.6, 264966.8, 264426.3, 263889.3, 263004.9, 262276.9, 262174.6, 263303.4, 264875.9, 266155.9, 267073.4, 268198.6, 269784.8, 271701.3, 273180.8, 274844.2, 276106.8, 276856.4, 277682.7, 278888.7, 280261.2, 282121.2, 282576.8, 284131.7, 285558.1, 285864.8, 286289.4, 286231.1, 286231.5, 285093.5, 283995.1, 282596.2, 280655.7, 274154.2, 268688.1, 269752.4, 272412.3, 274751.3, 276839.2, 278917.9, 281146.4, 283838.3, 282570.6, 282583.5, 283287.4, 284218.4, 286691.3, 288301.7, 290044.7, 292150.1, 295988.6, 298453.7, 300062.8, 296996.9, 289886.6, 290858.4, 291583.9, 291993.8, 292837.5, 293309.9, 294025.2, 294625.5, 295837, 296944.5, 297883.6, 298711.1, 300057.2, 300406.8, 300868.9, 301323.5, 301931.2, 302324.9, 300767.1, 299119.5, 283084.7, 286121.9, 287754.2, 288863.6, 289823.1, 289139.7, 289658.7, 286915.3, 289310, 291463.4, 291703.4, 292079.4]
+            gdp: [446231.9, 443811.6, 448902.7, 447184.6, 452028.7, 455738.4, 461173.1, 462912.8, 469141.2, 467957.5, 471012.5, 471097.9, 477810.1, 477114.7, 474483.3, 470104.7, 463999.4, 462002.1, 462552.1, 463795.3, 466858.1, 469792.8, 472535.1, 473133.4, 479935.2, 481001.2, 484310.2, 484196.4, 482121.2, 480036.7, 476839.2, 475267.4, 475858.7, 478546.7, 481079.1, 482613.5, 484831.3, 488035.7, 492029.3, 495919.1, 499981.2, 502283.4, 503223.1, 505293.4, 507428.2, 509927, 513075.8, 515328.1, 518680.1, 521949, 523315.6, 524956.1, 525895.8, 526209.6, 524817.3, 523789.2, 521882.3, 517868.5, 504625.9, 487291.1, 484307.7, 488730.7, 494511.4, 497677.2, 501306.9, 506306.2, 510486.2, 507649.3, 507340.5, 508215.1, 510010.5, 514332.3, 516947.5, 519967, 523347.1, 529124.9, 534421.1, 537463.3, 534293.3, 527581.4, 529094.1, 530460.9, 531393.3, 532845.6, 533994.4, 535263.2, 536336.8, 538202.9, 540301.6, 542273.7, 544062.8, 546294.6, 547285, 548325.2, 549301.1, 549925.1, 550608.8, 548970.6, 546877.8, 532986.9, 542151.2, 546255.4, 549219.7, 550796.8, 550269.4, 551061.3, 552179.2, 557454.4, 558654.7, 561765.8, 561541.8].map(toTrillion),
+            consumption: [243563.3, 244908.8, 246639.6, 246759.9, 248777.3, 250392.2, 252916.6, 253816.6, 256209.4, 256247, 257777.9, 257211.2, 261732.1, 259695.5, 258169.5, 254882.1, 252936.5, 253018.9, 253770.8, 254714.7, 256037.1, 257288.5, 259074.8, 259017.3, 262330.1, 263155.6, 264966.8, 264426.3, 263889.3, 263004.9, 262276.9, 262174.6, 263303.4, 264875.9, 266155.9, 267073.4, 268198.6, 269784.8, 271701.3, 273180.8, 274844.2, 276106.8, 276856.4, 277682.7, 278888.7, 280261.2, 282121.2, 282576.8, 284131.7, 285558.1, 285864.8, 286289.4, 286231.1, 286231.5, 285093.5, 283995.1, 282596.2, 280655.7, 274154.2, 268688.1, 269752.4, 272412.3, 274751.3, 276839.2, 278917.9, 281146.4, 283838.3, 282570.6, 282583.5, 283287.4, 284218.4, 286691.3, 288301.7, 290044.7, 292150.1, 295988.6, 298453.7, 300062.8, 296996.9, 289886.6, 290858.4, 291583.9, 291993.8, 292837.5, 293309.9, 294025.2, 294625.5, 295837, 296944.5, 297883.6, 298711.1, 300057.2, 300406.8, 300868.9, 301323.5, 301931.2, 302324.9, 300767.1, 299119.5, 283084.7, 286121.9, 287754.2, 288863.6, 289823.1, 289139.7, 289658.7, 286915.3, 289310, 291463.4, 291703.4, 292079.4].map(toTrillion)
         };
+        // ▲▲▲ 改善点1ここまで ▲▲▲
 
         const models = {
-            ols: { equation: "C = 61194 + 0.424 * GDP", mpc: 0.4237, p_mpc: 0.000, r2: 0.848, aic: 2523, dw: 0.155, intercept: 61193.66, slope: 0.4237 },
+            ols: { equation: "C = 61.2 + 0.424 * GDP", mpc: 0.4237, p_mpc: 0.000, r2: 0.848, aic: 2523, dw: 0.155, intercept: toTrillion(61193.66), slope: 0.4237 },
             break: { 
-                equation: "C = 187730 + 0.189 * GDP (2009年以降)",
+                equation: "C = 187.7 + 0.189 * GDP (2009年以降)",
                 mpc: 0.1893, p_mpc: 0.000, r2: 0.915, aic: 2454, dw: 0.463,
-                intercept_before: 13530, slope_before: 0.5193, 
-                intercept_after: 13530 + 174200, slope_after: 0.5193 - 0.3300
+                intercept_before: toTrillion(13530), slope_before: 0.5193, 
+                intercept_after: toTrillion(13530 + 174200), slope_after: 0.5193 - 0.3300
             },
-            serial: { equation: "C = 45272 + 0.454 * GDP (変換後)", mpc: 0.4541, p_mpc: 0.000, r2: 0.652, aic: 2267, dw: 2.512, intercept: 45272.15, slope: 0.4541 },
-            iv: { equation: "C = 88600 + 0.370 * GDP", mpc: 0.3703, p_mpc: 0.000, r2: 0.834, aic: 'N/A', dw: 'N/A', intercept: 88600, slope: 0.3703 }
+            serial: { equation: "C = 45.3 + 0.454 * GDP (変換後)", mpc: 0.4541, p_mpc: 0.000, r2: 0.652, aic: 2267, dw: 2.512, intercept: toTrillion(45272.15), slope: 0.4541 },
+            iv: { equation: "C = 88.6 + 0.370 * GDP", mpc: 0.3703, p_mpc: 0.000, r2: 0.834, aic: 'N/A', dw: 'N/A', intercept: toTrillion(88600), slope: 0.3703 }
         };
 
         const explanations = {
@@ -227,26 +233,41 @@
                 maintainAspectRatio: false,
                 scales: {
                     x: {
+                        // ▼▼▼【改善点1】軸ラベルの単位変更 ▼▼▼
                         title: {
                             display: true,
-                            text: 'GDP (10億円)'
+                            text: 'GDP (兆円)'
+                        },
+                        ticks: {
+                            callback: function(value, index, values) {
+                                return data.gdp[index].toFixed(0); 
+                            }
                         }
                     },
                     y: {
                         title: {
                             display: true,
-                            text: '消費 (10億円)'
+                            text: '消費 (兆円)'
+                        },
+                        ticks: {
+                           callback: function(value, index, values) {
+                                return value.toFixed(0);
+                            }
                         }
                     }
                 },
                 plugins: {
+                    // ▼▼▼【改善点3】凡例の位置を画面幅に応じて変更 ▼▼▼
+                    legend: {
+                        position: window.innerWidth < 768 ? 'bottom' : 'top',
+                    },
                     tooltip: {
                         callbacks: {
                             label: function(context) {
                                 const index = context.dataIndex;
                                 const datasetIndex = context.datasetIndex;
-                                const year = data.years[datasetIndex === 0 ? index : index + 60];
-                                return `年: ${year}, GDP: ${context.parsed.x.toFixed(0)}, 消費: ${context.parsed.y.toFixed(0)}`;
+                                const yearIndex = datasetIndex === 0 ? index : index + 60;
+                                return `年: ${data.years[yearIndex]}, GDP: ${context.parsed.x.toFixed(1)}兆円, 消費: ${context.parsed.y.toFixed(1)}兆円`;
                             }
                         }
                     }
@@ -369,11 +390,15 @@
                  `;
             } else if (step === 'conclusion') {
                 statsPanel.innerHTML = `
-                    <div class="stat-card col-span-1 md:col-span-2 lg:col-span-3">
+                    <div class="stat-card">
                         <p class="text-sm text-gray-500">単純OLSのMPC</p>
                         <p class="text-2xl font-bold text-red-500">${models.ols.mpc.toFixed(4)}</p>
                     </div>
-                    <div class="stat-card col-span-1 md:col-span-2 lg:col-span-3">
+                     <div class="stat-card">
+                        <p class="text-sm text-gray-500">構造変化後のMPC (2009~)</p>
+                        <p class="text-2xl font-bold text-blue-500">${models.break.mpc.toFixed(4)}</p>
+                    </div>
+                    <div class="stat-card">
                         <p class="text-sm text-gray-500">最終モデル(2SLS)のMPC</p>
                         <p class="text-2xl font-bold text-indigo-600">${models.iv.mpc.toFixed(4)}</p>
                     </div>
