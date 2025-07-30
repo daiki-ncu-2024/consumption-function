@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>インタラクティブ分析：日本の消費関数</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Calm Harmony -->
+    <!-- Application Structure Plan: The SPA is designed as a narrative journey through econometric analysis. A sticky sidebar navigation allows users to move between distinct analytical steps (from simple OLS to 2SLS). The main content area features a large, dynamic chart and a corresponding text panel. Clicking a navigation item updates both the chart visualization (e.g., changing regression lines) and the explanatory text, guiding the user through the process of model refinement. This thematic, step-by-step structure was chosen to make a complex analysis digestible and engaging, prioritizing the user's understanding of the analytical story over a simple data dump. -->
+    <!-- Visualization & Content Choices: The core visualization is a Chart.js scatter plot of GDP vs. Consumption, upon which different regression lines are dynamically overlaid. This choice directly supports the goal of comparing different models. Key quantitative results (like the Marginal Propensity to Consume) are presented in highlighted text blocks that update with each step, allowing for easy synthesis of findings. The narrative text is adapted from the source blog post to explain the 'why' behind each analytical step (e.g., why dummy variables or instrumental variables are necessary). This combination of interactive charts and dynamic text serves the primary goal of making the econometric modeling process intuitive and explorable. No SVG or Mermaid JS is used, adhering to the constraints. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background-color: #f8f9fa; /* Warm Neutral Background */
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 50vh;
+            max-height: 500px;
+        }
+        .nav-link {
+            transition: all 0.2s ease-in-out;
+        }
+        .nav-link.active {
+            background-color: #4a5568; /* Slate-600 */
+            color: white;
+            transform: translateX(4px);
+        }
+        .stat-card {
+            background: white;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        .prose-custom h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .prose-custom p {
+            line-height: 1.6;
+            margin-bottom: 1rem;
+        }
+        .prose-custom strong {
+            color: #2d3748; /* Slate-800 */
+        }
+    </style>
+</head>
+<body class="text-gray-700">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800">データで紐解く日本の消費行動</h1>
+            <p class="mt-2 text-lg text-gray-600">単純な回帰分析から同時方程式モデルへの旅</p>
+        </header>
+
+        <div class="flex flex-col md:flex-row gap-8">
+            <aside class="md:w-1/4">
+                <nav id="nav-menu" class="sticky top-8 bg-white p-4 rounded-lg shadow-md">
+                    <h2 class="font-bold text-lg mb-4 text-gray-800">分析ステップ</h2>
+                    <ul class="space-y-2">
+                        <li><a href="#intro" data-step="intro" class="nav-link block p-2 rounded-md hover:bg-gray-200">イントロダクション</a></li>
+                        <li><a href="#data" data-step="data" class="nav-link block p-2 rounded-md hover:bg-gray-200">1. データとの対話</a></li>
+                        <li><a href="#ols" data-step="ols" class="nav-link block p-2 rounded-md hover:bg-gray-200">2. 単純な回帰分析</a></li>
+                        <li><a href="#break" data-step="break" class="nav-link block p-2 rounded-md hover:bg-gray-200">3. 構造変化の考慮</a></li>
+                        <li><a href="#serial" data-step="serial" class="nav-link block p-2 rounded-md hover:bg-gray-200">4. 系列相関への対処</a></li>
+                        <li><a href="#iv" data-step="iv" class="nav-link block p-2 rounded-md hover:bg-gray-200">5. 同時方程式バイアス</a></li>
+                        <li><a href="#conclusion" data-step="conclusion" class="nav-link block p-2 rounded-md hover:bg-gray-200">まとめ</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <main class="md:w-3/4">
+                <section id="analysis-section" class="bg-white p-6 rounded-lg shadow-lg">
+                    <div class="chart-container">
+                        <canvas id="consumptionChart"></canvas>
+                    </div>
+                    <div id="stats-panel" class="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-center">
+                        <!-- Stats will be dynamically inserted here -->
+                    </div>
+                    <article id="explanation-panel" class="mt-6 prose-custom max-w-none">
+                        <!-- Explanations will be dynamically inserted here -->
+                    </article>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const data = {
+            years: [1994, 1994.25, 1994.5, 1994.75, 1995, 1995.25, 1995.5, 1995.75, 1996, 1996.25, 1996.5, 1996.75, 1997, 1997.25, 1997.5, 1997.75, 1998, 1998.25, 1998.5, 1998.75, 1999, 1999.25, 1999.5, 1999.75, 2000, 2000.25, 2000.5, 2000.75, 2001, 2001.25, 2001.5, 2001.75, 2002, 2002.25, 2002.5, 2002.75, 2003, 2003.25, 2003.5, 2003.75, 2004, 2004.25, 2004.5, 2004.75, 2005, 2005.25, 2005.5, 2005.75, 2006, 2006.25, 2006.5, 2006.75, 2007, 2007.25, 2007.5, 2007.75, 2008, 2008.25, 2008.5, 2008.75, 2009, 2009.25, 2009.5, 2009.75, 2010, 2010.25, 2010.5, 2010.75, 2011, 2011.25, 2011.5, 2011.75, 2012, 2012.25, 2012.5, 2012.75, 2013, 2013.25, 2013.5, 2013.75, 2014, 2014.25, 2014.5, 2014.75, 2015, 2015.25, 2015.5, 2015.75, 2016, 2016.25, 2016.5, 2016.75, 2017, 2017.25, 2017.5, 2017.75, 2018, 2018.25, 2018.5, 2018.75, 2019, 2019.25, 2019.5, 2019.75, 2020, 2020.25, 2020.5, 2020.75, 2021, 2021.25, 2021.5, 2021.75, 2022, 2022.25, 2022.5, 2022.75, 2023, 2023.25, 2023.5, 2023.75, 2024, 2024.25, 2024.5, 2024.75, 2025],
+            gdp: [446231.9, 443811.6, 448902.7, 447184.6, 452028.7, 455738.4, 461173.1, 462912.8, 469141.2, 467957.5, 471012.5, 471097.9, 477810.1, 477114.7, 474483.3, 470104.7, 463999.4, 462002.1, 462552.1, 463795.3, 466858.1, 469792.8, 472535.1, 473133.4, 479935.2, 481001.2, 484310.2, 484196.4, 482121.2, 480036.7, 476839.2, 475267.4, 475858.7, 478546.7, 481079.1, 482613.5, 484831.3, 488035.7, 492029.3, 495919.1, 499981.2, 502283.4, 503223.1, 505293.4, 507428.2, 509927, 513075.8, 515328.1, 518680.1, 521949, 523315.6, 524956.1, 525895.8, 526209.6, 524817.3, 523789.2, 521882.3, 517868.5, 504625.9, 487291.1, 484307.7, 488730.7, 494511.4, 497677.2, 501306.9, 506306.2, 510486.2, 507649.3, 507340.5, 508215.1, 510010.5, 514332.3, 516947.5, 519967, 523347.1, 529124.9, 534421.1, 537463.3, 534293.3, 527581.4, 529094.1, 530460.9, 531393.3, 532845.6, 533994.4, 535263.2, 536336.8, 538202.9, 540301.6, 542273.7, 544062.8, 546294.6, 547285, 548325.2, 549301.1, 549925.1, 550608.8, 548970.6, 546877.8, 532986.9, 542151.2, 546255.4, 549219.7, 550796.8, 550269.4, 551061.3, 552179.2, 557454.4, 558654.7, 561765.8, 561541.8],
+            consumption: [243563.3, 244908.8, 246639.6, 246759.9, 248777.3, 250392.2, 252916.6, 253816.6, 256209.4, 256247, 257777.9, 257211.2, 261732.1, 259695.5, 258169.5, 254882.1, 252936.5, 253018.9, 253770.8, 254714.7, 256037.1, 257288.5, 259074.8, 259017.3, 262330.1, 263155.6, 264966.8, 264426.3, 263889.3, 263004.9, 262276.9, 262174.6, 263303.4, 264875.9, 266155.9, 267073.4, 268198.6, 269784.8, 271701.3, 273180.8, 274844.2, 276106.8, 276856.4, 277682.7, 278888.7, 280261.2, 282121.2, 282576.8, 284131.7, 285558.1, 285864.8, 286289.4, 286231.1, 286231.5, 285093.5, 283995.1, 282596.2, 280655.7, 274154.2, 268688.1, 269752.4, 272412.3, 274751.3, 276839.2, 278917.9, 281146.4, 283838.3, 282570.6, 282583.5, 283287.4, 284218.4, 286691.3, 288301.7, 290044.7, 292150.1, 295988.6, 298453.7, 300062.8, 296996.9, 289886.6, 290858.4, 291583.9, 291993.8, 292837.5, 293309.9, 294025.2, 294625.5, 295837, 296944.5, 297883.6, 298711.1, 300057.2, 300406.8, 300868.9, 301323.5, 301931.2, 302324.9, 300767.1, 299119.5, 283084.7, 286121.9, 287754.2, 288863.6, 289823.1, 289139.7, 289658.7, 286915.3, 289310, 291463.4, 291703.4, 292079.4]
+        };
+
+        const models = {
+            ols: { intercept: 61193.66, slope: 0.4237, r2: 0.848, dw: 0.155 },
+            break: { 
+                intercept_before: 13530, slope_before: 0.5193, 
+                intercept_after: 13530 + 174200, slope_after: 0.5193 - 0.3300,
+                r2: 0.913, aic: 2454
+            },
+            cochrane: { intercept: 45272.15, slope: 0.4541, r2: 0.649, dw: 2.512 },
+            iv: { intercept: 88600, slope: 0.3703, r2: 0.834 }
+        };
+
+        const explanations = {
+            intro: `<h3>「所得が増えたら、私たちはどれだけ消費する？」</h3>
+                     <p>この素朴な疑問は、一国の経済を分析する上で非常に重要な「消費関数」という考え方に繋がります。今回は、実際の日本のGDPデータ（1994年〜2025年）を使い、この消費関数を明らかにするデータ分析のプロセスを追っていきます。</p>
+                     <p>単純なモデルから出発し、データの声に耳を傾けながら、徐々に現実をより正確に捉えるモデルへと改良していく、そんな実証分析の旅にご一緒ください。</p>`,
+            data: `<h3>1. データとの対話：可視化から始める</h3>
+                     <p>分析の第一歩は、データと向き合うことです。まずはGDPと消費の関係を散布図で見てみましょう。横軸にGDP、縦軸に消費（C）をとっています。</p>
+                     <p>点が右肩上がりに分布しており、<strong>強い正の相関</strong>が読み取れます。「GDPが増えれば消費も増える」という関係がありそうです。この関係性を数式で表すのが、次のステップである回帰分析です。</p>`,
+            ols: `<h3>2. 最初のモデル：単純な回帰分析</h3>
+                    <p>経済学で最も基本的な消費関数は、<strong>ケインズ型消費関数</strong>（C = α + β × GDP）と呼ばれます。この式を、最小二乗法（OLS）という最も標準的な手法で推定しました。</p>
+                    <p>この結果、「所得（GDP）が1兆円増えると、消費は約0.42兆円増える」ということを意味します。この<strong>β（傾き）= 0.4237</strong>は<strong>限界消費性向（MPC）</strong>と呼ばれます。</p>
+                    <p>しかし、このモデルは完璧ではありません。ダービン・ワトソン（DW）比という統計量が0.155と非常に低く、時系列データ特有の「系列相関」という問題の存在が疑われます。</p>`,
+            break: `<h3>3. モデルの改良①：構造変化を捉える</h3>
+                      <p>長期間のデータでは、経済の仕組みそのものが変わる「構造変化」が起きることがあります。グラフでは、2009年のリーマン・ショックを境にデータの色を変えています。</p>
+                      <p>2009年以降（青い点）は、それ以前（オレンジの点）と比べて、回帰直線が変化していることがわかります。ダミー変数を用いた分析によると、リーマン・ショック後、<strong>基礎消費は増加した一方、限界消費性向は低下した</strong>ことが示されました。</p>`,
+            serial: `<h3>4. モデルの改良②：「系列相関」を乗り越える</h3>
+                       <p>系列相関とは、ある時点の誤差が次の時点の誤差に影響する現象で、これを放置すると係数の信頼性が揺らぎます。この問題に対処する<strong>コクラン＝オーカット法</strong>で再推定しました。</p>
+                       <p>結果、限界消費性向の推定値は0.4541と少し上昇しましたが、その**標準誤差（推定の不確かさ）**は0.016から0.030へと増加しました。これは、単純なOLSでは推定精度を過大評価していた可能性を示唆します。</p>`,
+            iv: `<h3>5. 最終モデル：「鶏が先か、卵が先か」</h3>
+                 <p>「所得が増えるから消費が増える」だけでなく、「消費が増えるから所得が増える」という逆の因果関係も存在します。この**同時方程式バイアス**を補正するため、**操作変数法（2段階最小二乗法）**を用いました。</p>
+                 <p>GDPと相関し、かつ消費とは直接関係が薄いと考えられる「民間投資」を操作変数として使用した結果、限界消費性向は<strong>0.3703</strong>という、より現実に近いと考えられる推定値が得られました。</p>`,
+            conclusion: `<h3>まとめ：分析の旅路の果てに</h3>
+                         <p>今回の分析の旅を振り返ってみましょう。</p>
+                         <ol class="list-decimal list-inside space-y-2">
+                            <li><strong>出発点:</strong> 単純な回帰分析から、限界消費性向(MPC)は約<strong>0.42</strong>と推定。</li>
+                            <li><strong>寄り道①:</strong> リーマン・ショックという<strong>構造変化</strong>を考慮すると、消費行動のパターンが変化していた。</li>
+                            <li><strong>寄り道②:</strong> <strong>系列相関</strong>を修正すると、推定の不確かさが増すことが判明。</li>
+                            <li><strong>終着点:</strong> <strong>同時方程式バイアス</strong>を補正し、最終的なMPCは約<strong>0.37</strong>という結論に。</li>
+                         </ol>
+                         <p>データ分析は、問題を一つひとつクリアすることで、信頼できる結論にたどり着くプロセスです。今回の分析では、日本の「所得が1兆円増えたら、消費は3700億円増える」という関係性が検証されました。</p>`
+        };
+
+        const scatterPoints = data.gdp.map((gdp, i) => ({ x: gdp, y: data.consumption[i] }));
+        const scatterPointsBeforeBreak = scatterPoints.slice(0, 60);
+        const scatterPointsAfterBreak = scatterPoints.slice(60);
+
+        const ctx = document.getElementById('consumptionChart').getContext('2d');
+        const consumptionChart = new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: [
+                    {
+                        label: 'データ (1994-2008)',
+                        data: scatterPointsBeforeBreak,
+                        backgroundColor: 'rgba(255, 159, 64, 0.6)',
+                        borderColor: 'rgba(255, 159, 64, 1)',
+                        pointRadius: 4,
+                        type: 'scatter'
+                    },
+                    {
+                        label: 'データ (2009-2025)',
+                        data: scatterPointsAfterBreak,
+                        backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        pointRadius: 4,
+                        type: 'scatter'
+                    },
+                    {
+                        label: '単純OLS',
+                        data: [],
+                        borderColor: '#ef4444',
+                        backgroundColor: '#ef4444',
+                        type: 'line',
+                        fill: false,
+                        borderWidth: 2,
+                        pointRadius: 0
+                    },
+                    {
+                        label: '構造変化後 OLS',
+                        data: [],
+                        borderColor: '#3b82f6',
+                        backgroundColor: '#3b82f6',
+                        type: 'line',
+                        fill: false,
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        borderDash: [5, 5]
+                    },
+                     {
+                        label: '系列相関 対処後',
+                        data: [],
+                        borderColor: '#10b981',
+                        backgroundColor: '#10b981',
+                        type: 'line',
+                        fill: false,
+                        borderWidth: 2,
+                        pointRadius: 0
+                    },
+                    {
+                        label: '最終モデル (2SLS)',
+                        data: [],
+                        borderColor: '#4f46e5',
+                        backgroundColor: '#4f46e5',
+                        type: 'line',
+                        fill: false,
+                        borderWidth: 3,
+                        pointRadius: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'GDP (10億円)'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: '消費 (10億円)'
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const index = context.dataIndex;
+                                const datasetIndex = context.datasetIndex;
+                                const year = data.years[datasetIndex === 0 ? index : index + 60];
+                                return `年: ${year}, GDP: ${context.parsed.x.toFixed(0)}, 消費: ${context.parsed.y.toFixed(0)}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        function calculateLine(modelKey) {
+            const minX = Math.min(...data.gdp);
+            const maxX = Math.max(...data.gdp);
+            const { intercept, slope } = models[modelKey];
+            return [{ x: minX, y: intercept + slope * minX }, { x: maxX, y: intercept + slope * maxX }];
+        }
+        
+        function calculateBreakLines() {
+            const breakPointGDP = data.gdp[59];
+            const minX = Math.min(...data.gdp);
+            const maxX = Math.max(...data.gdp);
+
+            const before = models.break;
+            const lineBefore = [
+                { x: minX, y: before.intercept_before + before.slope_before * minX },
+                { x: breakPointGDP, y: before.intercept_before + before.slope_before * breakPointGDP }
+            ];
+            
+            const after = models.break;
+            const lineAfter = [
+                { x: breakPointGDP, y: after.intercept_after + after.slope_after * breakPointGDP },
+                { x: maxX, y: after.intercept_after + after.slope_after * maxX }
+            ];
+
+            return { lineBefore, lineAfter };
+        }
+
+        function updateView(step) {
+            const explanationPanel = document.getElementById('explanation-panel');
+            const statsPanel = document.getElementById('stats-panel');
+            explanationPanel.innerHTML = explanations[step];
+            
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.toggle('active', link.dataset.step === step);
+            });
+
+            consumptionChart.data.datasets[0].hidden = false;
+            consumptionChart.data.datasets[1].hidden = false;
+            consumptionChart.data.datasets[2].data = [];
+            consumptionChart.data.datasets[3].data = [];
+            consumptionChart.data.datasets[4].data = [];
+            consumptionChart.data.datasets[5].data = [];
+            statsPanel.innerHTML = '';
+
+            switch (step) {
+                case 'data':
+                    consumptionChart.options.plugins.title = { display: true, text: 'GDPと消費の散布図' };
+                    break;
+                case 'ols':
+                    consumptionChart.options.plugins.title = { display: true, text: '単純な回帰分析 (OLS)' };
+                    consumptionChart.data.datasets[2].data = calculateLine('ols');
+                    statsPanel.innerHTML = `
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">限界消費性向 (MPC)</p>
+                            <p class="text-2xl font-bold text-red-500">${models.ols.slope.toFixed(4)}</p>
+                        </div>
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">決定係数 (R²)</p>
+                            <p class="text-2xl font-bold">${models.ols.r2.toFixed(3)}</p>
+                        </div>
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">DW比</p>
+                            <p class="text-2xl font-bold text-yellow-500">${models.ols.dw.toFixed(3)}</p>
+                        </div>`;
+                    break;
+                case 'break':
+                    consumptionChart.options.plugins.title = { display: true, text: '構造変化モデル (2009年)' };
+                    const { lineBefore, lineAfter } = calculateBreakLines();
+                    consumptionChart.data.datasets[2].data = lineBefore;
+                    consumptionChart.data.datasets[3].data = lineAfter;
+                    statsPanel.innerHTML = `
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">MPC (〜2008)</p>
+                            <p class="text-2xl font-bold text-orange-500">${models.break.slope_before.toFixed(4)}</p>
+                        </div>
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">MPC (2009〜)</p>
+                            <p class="text-2xl font-bold text-blue-500">${models.break.slope_after.toFixed(4)}</p>
+                        </div>
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">AIC</p>
+                            <p class="text-2xl font-bold">${models.break.aic}</p>
+                        </div>`;
+                    break;
+                case 'serial':
+                    consumptionChart.options.plugins.title = { display: true, text: '系列相関 対処後 (コクラン＝オーカット法)' };
+                    consumptionChart.data.datasets[4].data = calculateLine('cochrane');
+                    statsPanel.innerHTML = `
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">限界消費性向 (MPC)</p>
+                            <p class="text-2xl font-bold text-green-500">${models.cochrane.slope.toFixed(4)}</p>
+                        </div>
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">決定係数 (R²)</p>
+                            <p class="text-2xl font-bold">${models.cochrane.r2.toFixed(3)}</p>
+                        </div>
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">DW比</p>
+                            <p class="text-2xl font-bold text-green-500">${models.cochrane.dw.toFixed(3)}</p>
+                        </div>`;
+                    break;
+                case 'iv':
+                    consumptionChart.options.plugins.title = { display: true, text: '最終モデル (2段階最小二乗法)' };
+                    consumptionChart.data.datasets[2].data = calculateLine('ols');
+                    consumptionChart.data.datasets[5].data = calculateLine('iv');
+                     statsPanel.innerHTML = `
+                        <div class="stat-card col-span-1 sm:col-span-2 lg:col-span-3">
+                            <p class="text-sm text-gray-500">最終的な限界消費性向 (MPC)</p>
+                            <p class="text-3xl font-bold text-indigo-600">${models.iv.slope.toFixed(4)}</p>
+                        </div>`;
+                    break;
+                case 'conclusion':
+                     consumptionChart.options.plugins.title = { display: true, text: '分析モデルの比較' };
+                     consumptionChart.data.datasets[2].data = calculateLine('ols');
+                     consumptionChart.data.datasets[5].data = calculateLine('iv');
+                     statsPanel.innerHTML = `
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">単純OLSのMPC</p>
+                            <p class="text-2xl font-bold text-red-500">${models.ols.slope.toFixed(4)}</p>
+                        </div>
+                         <div class="stat-card">
+                            <p class="text-sm text-gray-500">構造変化後のMPC</p>
+                            <p class="text-2xl font-bold text-blue-500">${models.break.slope_after.toFixed(4)}</p>
+                        </div>
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">最終モデルのMPC</p>
+                            <p class="text-2xl font-bold text-indigo-600">${models.iv.slope.toFixed(4)}</p>
+                        </div>`;
+                    break;
+                default:
+                    consumptionChart.options.plugins.title = { display: false };
+                    consumptionChart.data.datasets[0].hidden = true;
+                    consumptionChart.data.datasets[1].hidden = true;
+            }
+            consumptionChart.update();
+        }
+
+        document.getElementById('nav-menu').addEventListener('click', (e) => {
+            if (e.target.tagName === 'A') {
+                e.preventDefault();
+                const step = e.target.dataset.step;
+                updateView(step);
+                document.getElementById('analysis-section').scrollIntoView({ behavior: 'smooth' });
+            }
+        });
+
+        // Initial view
+        updateView('intro');
+    </script>
+
+</body>
+</html>
