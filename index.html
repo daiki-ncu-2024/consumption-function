@@ -40,6 +40,9 @@
             border-radius: 0.5rem;
             padding: 1rem;
             box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
         .prose-custom h3 {
             font-size: 1.25rem;
@@ -53,6 +56,11 @@
         }
         .prose-custom strong {
             color: #2d3748; /* Slate-800 */
+        }
+        .equation-card {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #e2e8f0;
+            color: #2d3748;
         }
     </style>
 </head>
@@ -85,7 +93,7 @@
                     <div class="chart-container">
                         <canvas id="consumptionChart"></canvas>
                     </div>
-                    <div id="stats-panel" class="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-center">
+                    <div id="stats-panel" class="mt-6 grid grid-cols-1 gap-4 text-center">
                         <!-- Stats will be dynamically inserted here -->
                     </div>
                     <article id="explanation-panel" class="mt-6 prose-custom max-w-none">
@@ -104,14 +112,15 @@
         };
 
         const models = {
-            ols: { intercept: 61193.66, slope: 0.4237, r2: 0.848, dw: 0.155 },
+            ols: { equation: "C = 61194 + 0.424 * GDP", mpc: 0.4237, p_mpc: 0.000, r2: 0.848, aic: 2523, dw: 0.155, intercept: 61193.66, slope: 0.4237 },
             break: { 
+                equation: "C = 187730 + 0.189 * GDP (2009年以降)",
+                mpc: 0.1893, p_mpc: 0.000, r2: 0.915, aic: 2454, dw: 0.463,
                 intercept_before: 13530, slope_before: 0.5193, 
-                intercept_after: 13530 + 174200, slope_after: 0.5193 - 0.3300,
-                r2: 0.913, aic: 2454
+                intercept_after: 13530 + 174200, slope_after: 0.5193 - 0.3300
             },
-            cochrane: { intercept: 45272.15, slope: 0.4541, r2: 0.649, dw: 2.512 },
-            iv: { intercept: 88600, slope: 0.3703, r2: 0.834 }
+            serial: { equation: "C = 45272 + 0.454 * GDP (変換後)", mpc: 0.4541, p_mpc: 0.000, r2: 0.652, aic: 2267, dw: 2.512, intercept: 45272.15, slope: 0.4541 },
+            iv: { equation: "C = 88600 + 0.370 * GDP", mpc: 0.3703, p_mpc: 0.000, r2: 0.834, aic: 'N/A', dw: 'N/A', intercept: 88600, slope: 0.3703 }
         };
 
         const explanations = {
@@ -123,7 +132,7 @@
                      <p>点が右肩上がりに分布しており、<strong>強い正の相関</strong>が読み取れます。「GDPが増えれば消費も増える」という関係がありそうです。この関係性を数式で表すのが、次のステップである回帰分析です。</p>`,
             ols: `<h3>2. 最初のモデル：単純な回帰分析</h3>
                     <p>経済学で最も基本的な消費関数は、<strong>ケインズ型消費関数</strong>（C = α + β × GDP）と呼ばれます。この式を、最小二乗法（OLS）という最も標準的な手法で推定しました。</p>
-                    <p>この結果、「所得（GDP）が1兆円増えると、消費は約0.42兆円増える」ということを意味します。この<strong>β（傾き）= 0.4237</strong>は<strong>限界消費性向（MPC）</strong>と呼ばれます。</p>
+                    <p>この結果、「所得（GDP）が1兆円増えると、消費は約0.42兆円増える」ということを意味します。この<strong>β（傾き）</strong>は<strong>限界消費性向（MPC）</strong>と呼ばれます。</p>
                     <p>しかし、このモデルは完璧ではありません。ダービン・ワトソン（DW）比という統計量が0.155と非常に低く、時系列データ特有の「系列相関」という問題の存在が疑われます。</p>`,
             break: `<h3>3. モデルの改良①：構造変化を捉える</h3>
                       <p>長期間のデータでは、経済の仕組みそのものが変わる「構造変化」が起きることがあります。グラフでは、2009年のリーマン・ショックを境にデータの色を変えています。</p>
@@ -171,7 +180,7 @@
                         type: 'scatter'
                     },
                     {
-                        label: '単純OLS',
+                        label: '単純OLS / 構造変化前',
                         data: [],
                         borderColor: '#ef4444',
                         backgroundColor: '#ef4444',
@@ -288,6 +297,8 @@
             consumptionChart.data.datasets[4].data = [];
             consumptionChart.data.datasets[5].data = [];
             statsPanel.innerHTML = '';
+            
+            let currentModel;
 
             switch (step) {
                 case 'data':
@@ -296,89 +307,79 @@
                 case 'ols':
                     consumptionChart.options.plugins.title = { display: true, text: '単純な回帰分析 (OLS)' };
                     consumptionChart.data.datasets[2].data = calculateLine('ols');
-                    statsPanel.innerHTML = `
-                        <div class="stat-card">
-                            <p class="text-sm text-gray-500">限界消費性向 (MPC)</p>
-                            <p class="text-2xl font-bold text-red-500">${models.ols.slope.toFixed(4)}</p>
-                        </div>
-                        <div class="stat-card">
-                            <p class="text-sm text-gray-500">決定係数 (R²)</p>
-                            <p class="text-2xl font-bold">${models.ols.r2.toFixed(3)}</p>
-                        </div>
-                        <div class="stat-card">
-                            <p class="text-sm text-gray-500">DW比</p>
-                            <p class="text-2xl font-bold text-yellow-500">${models.ols.dw.toFixed(3)}</p>
-                        </div>`;
+                    currentModel = models.ols;
                     break;
                 case 'break':
                     consumptionChart.options.plugins.title = { display: true, text: '構造変化モデル (2009年)' };
                     const { lineBefore, lineAfter } = calculateBreakLines();
                     consumptionChart.data.datasets[2].data = lineBefore;
                     consumptionChart.data.datasets[3].data = lineAfter;
-                    statsPanel.innerHTML = `
-                        <div class="stat-card">
-                            <p class="text-sm text-gray-500">MPC (〜2008)</p>
-                            <p class="text-2xl font-bold text-orange-500">${models.break.slope_before.toFixed(4)}</p>
-                        </div>
-                        <div class="stat-card">
-                            <p class="text-sm text-gray-500">MPC (2009〜)</p>
-                            <p class="text-2xl font-bold text-blue-500">${models.break.slope_after.toFixed(4)}</p>
-                        </div>
-                        <div class="stat-card">
-                            <p class="text-sm text-gray-500">AIC</p>
-                            <p class="text-2xl font-bold">${models.break.aic}</p>
-                        </div>`;
+                    currentModel = models.break;
                     break;
                 case 'serial':
                     consumptionChart.options.plugins.title = { display: true, text: '系列相関 対処後 (コクラン＝オーカット法)' };
-                    consumptionChart.data.datasets[4].data = calculateLine('cochrane');
-                    statsPanel.innerHTML = `
-                        <div class="stat-card">
-                            <p class="text-sm text-gray-500">限界消費性向 (MPC)</p>
-                            <p class="text-2xl font-bold text-green-500">${models.cochrane.slope.toFixed(4)}</p>
-                        </div>
-                        <div class="stat-card">
-                            <p class="text-sm text-gray-500">決定係数 (R²)</p>
-                            <p class="text-2xl font-bold">${models.cochrane.r2.toFixed(3)}</p>
-                        </div>
-                        <div class="stat-card">
-                            <p class="text-sm text-gray-500">DW比</p>
-                            <p class="text-2xl font-bold text-green-500">${models.cochrane.dw.toFixed(3)}</p>
-                        </div>`;
+                    consumptionChart.data.datasets[4].data = calculateLine('serial');
+                    currentModel = models.serial;
                     break;
                 case 'iv':
                     consumptionChart.options.plugins.title = { display: true, text: '最終モデル (2段階最小二乗法)' };
                     consumptionChart.data.datasets[2].data = calculateLine('ols');
                     consumptionChart.data.datasets[5].data = calculateLine('iv');
-                     statsPanel.innerHTML = `
-                        <div class="stat-card col-span-1 sm:col-span-2 lg:col-span-3">
-                            <p class="text-sm text-gray-500">最終的な限界消費性向 (MPC)</p>
-                            <p class="text-3xl font-bold text-indigo-600">${models.iv.slope.toFixed(4)}</p>
-                        </div>`;
+                    currentModel = models.iv;
                     break;
                 case 'conclusion':
                      consumptionChart.options.plugins.title = { display: true, text: '分析モデルの比較' };
                      consumptionChart.data.datasets[2].data = calculateLine('ols');
                      consumptionChart.data.datasets[5].data = calculateLine('iv');
-                     statsPanel.innerHTML = `
-                        <div class="stat-card">
-                            <p class="text-sm text-gray-500">単純OLSのMPC</p>
-                            <p class="text-2xl font-bold text-red-500">${models.ols.slope.toFixed(4)}</p>
-                        </div>
-                         <div class="stat-card">
-                            <p class="text-sm text-gray-500">構造変化後のMPC</p>
-                            <p class="text-2xl font-bold text-blue-500">${models.break.slope_after.toFixed(4)}</p>
-                        </div>
-                        <div class="stat-card">
-                            <p class="text-sm text-gray-500">最終モデルのMPC</p>
-                            <p class="text-2xl font-bold text-indigo-600">${models.iv.slope.toFixed(4)}</p>
-                        </div>`;
-                    break;
+                     break;
                 default:
                     consumptionChart.options.plugins.title = { display: false };
                     consumptionChart.data.datasets[0].hidden = true;
                     consumptionChart.data.datasets[1].hidden = true;
             }
+
+            if (currentModel) {
+                 statsPanel.innerHTML = `
+                    <div class="stat-card equation-card col-span-1 md:col-span-2 lg:col-span-5">
+                        <p class="text-sm">推定された回帰式</p>
+                        <p class="text-lg font-semibold">${currentModel.equation}</p>
+                    </div>
+                    <div class="grid grid-cols-2 lg:grid-cols-5 col-span-1 md:col-span-2 lg:col-span-5 gap-4">
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">限界消費性向 (MPC)</p>
+                            <p class="text-2xl font-bold text-indigo-600">${currentModel.mpc.toFixed(4)}</p>
+                        </div>
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">MPCのp値</p>
+                            <p class="text-2xl font-bold">${currentModel.p_mpc.toFixed(3)}</p>
+                        </div>
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">決定係数 (R²)</p>
+                            <p class="text-2xl font-bold">${currentModel.r2.toFixed(3)}</p>
+                        </div>
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">AIC</p>
+                            <p class="text-2xl font-bold">${currentModel.aic}</p>
+                        </div>
+                        <div class="stat-card">
+                            <p class="text-sm text-gray-500">DW比</p>
+                            <p class="text-2xl font-bold ${currentModel.dw < 1.0 || currentModel.dw > 3.0 ? 'text-yellow-500' : 'text-green-500'}">${currentModel.dw}</p>
+                        </div>
+                    </div>
+                 `;
+            } else if (step === 'conclusion') {
+                statsPanel.innerHTML = `
+                    <div class="stat-card col-span-1 md:col-span-2 lg:col-span-3">
+                        <p class="text-sm text-gray-500">単純OLSのMPC</p>
+                        <p class="text-2xl font-bold text-red-500">${models.ols.mpc.toFixed(4)}</p>
+                    </div>
+                    <div class="stat-card col-span-1 md:col-span-2 lg:col-span-3">
+                        <p class="text-sm text-gray-500">最終モデル(2SLS)のMPC</p>
+                        <p class="text-2xl font-bold text-indigo-600">${models.iv.mpc.toFixed(4)}</p>
+                    </div>
+                `;
+            }
+
             consumptionChart.update();
         }
 
